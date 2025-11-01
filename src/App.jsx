@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, User, FileText, Download, Plus, List } from 'lucide-react';
+import { Camera, User, FileText, Download, Plus, X } from 'lucide-react';
 
-const GasStationApp = () => {
+function GasStationApp() {
   const [activeTab, setActiveTab] = useState('transaction');
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [showScanner, setShowScanner] = useState(false);
+  const [showDriverList, setShowDriverList] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState(null);
-  const [driverQRCode, setDriverQRCode] = useState(null);
-  const qrScannerRef = useRef(null);
-  const html5QrCodeRef = useRef(null);
+  const [qrCodeModal, setQrCodeModal] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const scanIntervalRef = useRef(null);
   
-  // Form state
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     fuelType: 'Diesel',
@@ -23,133 +24,94 @@ const GasStationApp = () => {
     vehiclePlate: '',
   });
 
-  const receiptRef = useRef(null);
-
-  // Load data from storage on mount
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  const loadData = () => {
     try {
-      const driversData = await window.storage.get('drivers');
-      const vehiclesData = await window.storage.get('vehicles');
-      const transactionsData = await window.storage.get('transactions');
+      const savedDrivers = localStorage.getItem('gas_drivers');
+      const savedVehicles = localStorage.getItem('gas_vehicles');
+      const savedTransactions = localStorage.getItem('gas_transactions');
       
-      if (driversData) setDrivers(JSON.parse(driversData.value));
-      if (vehiclesData) setVehicles(JSON.parse(vehiclesData.value));
-      if (transactionsData) setTransactions(JSON.parse(transactionsData.value));
+      if (savedDrivers) setDrivers(JSON.parse(savedDrivers));
+      if (savedVehicles) setVehicles(JSON.parse(savedVehicles));
+      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
     } catch (error) {
-      console.log('No existing data, starting fresh');
+      console.error('Error loading data:', error);
     }
   };
 
-  const saveDrivers = async (newDrivers) => {
-    try {
-      const result = await window.storage.set('drivers', JSON.stringify(newDrivers));
-      setDrivers(newDrivers);
-      console.log('Drivers saved successfully:', result);
-      return result;
-    } catch (error) {
-      console.error('Error saving drivers:', error);
-      alert('Error saving drivers: ' + error.message);
-      return null;
-    }
+  const saveDrivers = (newDrivers) => {
+    localStorage.setItem('gas_drivers', JSON.stringify(newDrivers));
+    setDrivers(newDrivers);
   };
 
-  const saveVehicles = async (newVehicles) => {
-    try {
-      await window.storage.set('vehicles', JSON.stringify(newVehicles));
-      setVehicles(newVehicles);
-    } catch (error) {
-      alert('Error saving vehicles');
-    }
+  const saveVehicles = (newVehicles) => {
+    localStorage.setItem('gas_vehicles', JSON.stringify(newVehicles));
+    setVehicles(newVehicles);
   };
 
-  const saveTransactions = async (newTransactions) => {
-    try {
-      await window.storage.set('transactions', JSON.stringify(newTransactions));
-      setTransactions(newTransactions);
-    } catch (error) {
-      alert('Error saving transactions');
-    }
+  const saveTransactions = (newTransactions) => {
+    localStorage.setItem('gas_transactions', JSON.stringify(newTransactions));
+    setTransactions(newTransactions);
   };
 
-  const generateUniqueId = () => {
+  const generateId = () => {
     return 'DRV-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
   };
 
-  const generateQRCode = async (text) => {
-    try {
-      const qrCodeDataUrl = await QRCode.toDataURL(text, {
-        width: 400,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      });
-      return qrCodeDataUrl;
-    } catch (err) {
-      console.error('Error generating QR code:', err);
-      return null;
-    }
-  };
+  const generateQRCode = (text) => {
+  const container = document.createElement('div');
+  const qr = new QRCode(container, {
+    text: text,
+    width: 256,
+    height: 256,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H
+  });
+  
+  // Get the canvas or image from the container
+  const canvas = container.querySelector('canvas');
+  return canvas ? canvas.toDataURL('image/png') : null;
+};
 
-  const addDriver = async () => {
-    try {
-      const name = prompt('Enter driver name:');
-      if (!name || !name.trim()) return;
+  const addDriver = () => {
+    const name = prompt('Enter driver name:');
+    if (!name || !name.trim()) return;
 
-      const company = prompt('Enter company/organization:');
-      if (!company || !company.trim()) return;
+    const company = prompt('Enter company/organization:');
+    if (!company || !company.trim()) return;
 
-      const privateKey = generateUniqueId();
-      
-      const newDriver = {
-        id: privateKey,
-        name: name.trim(),
-        company: company.trim(),
-        addedDate: new Date().toISOString(),
-      };
+    const driverId = generateId();
+    
+    const newDriver = {
+      id: driverId,
+      name: name.trim(),
+      company: company.trim(),
+      addedDate: new Date().toISOString(),
+    };
 
-      console.log('Adding driver:', newDriver);
-
-      // Save driver first
-      const updatedDrivers = [...drivers, newDriver];
-      const saveResult = await saveDrivers(updatedDrivers);
-      
-      console.log('Driver saved, generating QR...');
-      
-      // Generate QR code
-      const qrCode = await generateQRCode(privateKey);
-      
-      console.log('QR code generated:', qrCode ? 'success' : 'failed');
-      
-      if (qrCode) {
-        setDriverQRCode({ 
-          name: name.trim(), 
-          company: company.trim(), 
-          qrCode, 
-          privateKey 
-        });
-      } else {
-        alert('Driver added successfully, but QR code generation failed.');
-      }
-    } catch (error) {
-      console.error('Error adding driver:', error);
-      alert('Error adding driver: ' + error.message);
-    }
+    saveDrivers([...drivers, newDriver]);
+    
+    const qrCode = generateQRCode(driverId);
+    setQrCodeModal({
+      name: name.trim(),
+      company: company.trim(),
+      qrCode: qrCode,
+      driverId: driverId
+    });
   };
 
   const addVehicle = () => {
     const plate = prompt('Enter vehicle plate number:');
-    if (!plate) return;
+    if (!plate || !plate.trim()) return;
 
     const plateUpper = plate.trim().toUpperCase();
     
     if (vehicles.find(v => v.plate === plateUpper)) {
-      alert('This vehicle is already in the fleet!');
+      alert('Vehicle already exists!');
       return;
     }
 
@@ -160,110 +122,101 @@ const GasStationApp = () => {
     };
 
     saveVehicles([...vehicles, newVehicle]);
-    alert(`Vehicle "${plateUpper}" added to fleet!`);
+    alert('Vehicle ' + plateUpper + ' added!');
   };
 
   const handleFormChange = (field, value) => {
     const newFormData = { ...formData, [field]: value };
     
-    // Auto-calculate quantity when total or unitPrice changes
     if (field === 'total' || field === 'unitPrice') {
       const total = parseFloat(field === 'total' ? value : formData.total);
       const unitPrice = parseFloat(field === 'unitPrice' ? value : formData.unitPrice);
       
       if (total > 0 && unitPrice > 0) {
-        const quantity = total / unitPrice;
-        newFormData.quantity = Math.ceil(quantity * 1000) / 1000; // Round up to 3 decimals
+        newFormData.quantity = Math.ceil((total / unitPrice) * 1000) / 1000;
       }
     }
     
     setFormData(newFormData);
   };
 
-  const scanDriver = () => {
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        setScanning(true);
+        startScanning();
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+      alert('Cannot access camera. Please check permissions or use manual entry.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const tracks = videoRef.current.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
+    setScanning(false);
+  };
+
+  const startScanning = () => {
+    scanIntervalRef.current = setInterval(() => {
+      if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
+        const canvas = canvasRef.current;
+        const video = videoRef.current;
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+    }, 500);
+  };
+
+  const openQRScanner = () => {
     setShowQRScanner(true);
-    // Start QR scanner after modal opens
-    setTimeout(() => {
-      startQRScanner();
-    }, 300);
+    setTimeout(() => startCamera(), 100);
   };
 
-  const startQRScanner = async () => {
-    try {
-      if (!html5QrCodeRef.current) {
-        html5QrCodeRef.current = new Html5Qrcode("qr-reader");
-      }
-
-      const config = { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0
-      };
-
-      await html5QrCodeRef.current.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          // QR code successfully scanned
-          onQRCodeScanned(decodedText);
-        },
-        (errorMessage) => {
-          // Ignore scanning errors (happens continuously while scanning)
-        }
-      );
-    } catch (err) {
-      console.error("Unable to start QR scanner:", err);
-      alert("Camera access denied or not available. Please enable camera permissions.");
-    }
+  const closeQRScanner = () => {
+    stopCamera();
+    setShowQRScanner(false);
   };
 
-  const stopQRScanner = async () => {
-    try {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        await html5QrCodeRef.current.stop();
-      }
-    } catch (err) {
-      console.error("Error stopping scanner:", err);
-    }
-  };
+  const manualDriverEntry = () => {
+    const driverId = prompt('Enter Driver ID from QR code:');
+    if (!driverId) return;
 
-  const onQRCodeScanned = async (scannedKey) => {
-    await stopQRScanner();
-    
-    const driver = drivers.find(d => d.id === scannedKey.trim());
+    const driver = drivers.find(d => d.id.trim() === driverId.trim());
     if (driver) {
       setSelectedDriver(driver);
-      setShowQRScanner(false);
-      alert(`Driver verified: ${driver.name}`);
+      closeQRScanner();
+      alert('Driver verified: ' + driver.name);
     } else {
-      alert('Invalid QR code! Driver not found in database.');
-      setShowQRScanner(false);
+      alert('Invalid Driver ID!');
     }
-  };
-
-  const handleQRScan = () => {
-    const scannedKey = prompt('Enter the scanned QR code key (or driver ID):');
-    if (!scannedKey) {
-      return;
-    }
-
-    onQRCodeScanned(scannedKey);
-  };
-
-  const closeQRScanner = async () => {
-    await stopQRScanner();
-    setShowQRScanner(false);
   };
 
   const selectDriverFromList = (driver) => {
     setSelectedDriver(driver);
-    setShowScanner(false);
-    alert(`Driver verified: ${driver.name}`);
+    setShowDriverList(false);
+    alert('Driver selected: ' + driver.name);
   };
 
-  const submitTransaction = async () => {
+  const submitTransaction = () => {
     if (!selectedDriver) {
-      alert('Please scan/select a driver first!');
+      alert('Please select a driver first!');
       return;
     }
 
@@ -272,7 +225,7 @@ const GasStationApp = () => {
       return;
     }
 
-    const newTransaction = {
+    const transaction = {
       id: 'TXN-' + Date.now(),
       ...formData,
       driverName: selectedDriver.name,
@@ -281,13 +234,9 @@ const GasStationApp = () => {
       timestamp: new Date().toISOString(),
     };
 
-    const updatedTransactions = [...transactions, newTransaction];
-    await saveTransactions(updatedTransactions);
+    saveTransactions([...transactions, transaction]);
+    generateReceipt(transaction);
 
-    // Generate receipt
-    generateReceipt(newTransaction);
-
-    // Reset form
     setFormData({
       date: new Date().toISOString().split('T')[0],
       fuelType: 'Diesel',
@@ -298,166 +247,146 @@ const GasStationApp = () => {
     });
     setSelectedDriver(null);
 
-    alert('Transaction saved successfully!');
+    alert('Transaction saved and receipt downloaded!');
   };
 
-  const generateReceipt = (transaction) => {
+  const generateReceipt = (txn) => {
     const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 600;
+    canvas.width = 1000;
+    canvas.height = 500;
     const ctx = canvas.getContext('2d');
 
-    // Background
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, 1200, 600);
+    ctx.fillRect(0, 0, 1000, 500);
 
-    // Header
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 36px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('ANH HUY GAS STATION', 600, 50);
-
-    ctx.font = '18px Arial';
-    ctx.fillText('FUEL RECEIPT', 600, 80);
-
-    // Line separator
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(50, 100);
-    ctx.lineTo(1150, 100);
-    ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.strokeRect(5, 5, 990, 490);
 
-    // Left column - Transaction details
-    ctx.textAlign = 'left';
-    ctx.font = '20px Arial';
-    let yPos = 140;
-    const lineHeight = 35;
-
-    const leftDetails = [
-      `Date: ${transaction.date}`,
-      `Time: ${new Date(transaction.timestamp).toLocaleTimeString('vi-VN')}`,
-      `Driver: ${transaction.driverName}`,
-      `Company: ${transaction.driverCompany}`,
-      `Vehicle: ${transaction.vehiclePlate}`,
-    ];
-
-    leftDetails.forEach((detail, index) => {
-      ctx.fillText(detail, 80, yPos + (index * lineHeight));
-    });
-
-    // Right column - Fuel details
-    const rightDetails = [
-      `Fuel Type: ${transaction.fuelType}`,
-      `Quantity: ${transaction.quantity} L`,
-      `Unit Price: ${formatCurrency(transaction.unitPrice)} VND/L`,
-      ``,
-      `TOTAL: ${formatCurrency(transaction.total)} VND`,
-    ];
-
-    yPos = 140;
-    rightDetails.forEach((detail, index) => {
-      if (index === rightDetails.length - 1) {
-        ctx.font = 'bold 28px Arial';
-      } else {
-        ctx.font = '20px Arial';
-      }
-      ctx.fillText(detail, 650, yPos + (index * lineHeight));
-    });
-
-    // Footer
-    ctx.font = '16px Arial';
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(5, 5, 990, 70);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 32px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Thank you for your business!', 600, 500);
+    ctx.fillText('ANH HUY GAS STATION', 500, 45);
     ctx.font = '14px Arial';
-    ctx.fillText(`Transaction ID: ${transaction.id}`, 600, 530);
+    ctx.fillText('FUEL RECEIPT', 500, 65);
 
-    // Convert to image and download
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'left';
+
+    let y = 110;
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText('TRANSACTION INFO', 40, y);
+    ctx.font = '15px Arial';
+    y += 30;
+    ctx.fillText('Date: ' + txn.date, 40, y);
+    y += 25;
+    ctx.fillText('Time: ' + new Date(txn.timestamp).toLocaleTimeString('vi-VN'), 40, y);
+    y += 25;
+    ctx.fillText('Vehicle: ' + txn.vehiclePlate, 40, y);
+    y += 25;
+    ctx.fillText('Driver: ' + txn.driverName, 40, y);
+    y += 25;
+    ctx.fillStyle = '#666666';
+    ctx.font = '13px Arial';
+    ctx.fillText('Company: ' + txn.driverCompany, 40, y);
+
+    y = 110;
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText('FUEL DETAILS', 520, y);
+    ctx.font = '15px Arial';
+    y += 30;
+    ctx.fillText('Fuel Type: ' + txn.fuelType, 520, y);
+    y += 25;
+    ctx.fillText('Quantity: ' + txn.quantity + ' L', 520, y);
+    y += 25;
+    ctx.fillText('Unit Price: ' + formatNumber(txn.unitPrice) + ' VND/L', 520, y);
+    
+    y += 40;
+    ctx.fillStyle = '#f3f4f6';
+    ctx.fillRect(510, y - 25, 450, 45);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('TOTAL: ' + formatNumber(txn.total) + ' VND', 520, y);
+
+    ctx.font = '13px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#666666';
+    ctx.fillText('Thank you for your business!', 500, 430);
+    ctx.font = '11px Arial';
+    ctx.fillText('Transaction ID: ' + txn.id, 500, 455);
+
     canvas.toBlob((blob) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Receipt_${transaction.vehiclePlate}_${Date.now()}.jpg`;
-      document.body.appendChild(a);
+      a.download = 'Receipt_' + txn.vehiclePlate + '_' + Date.now() + '.jpg';
       a.click();
-      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 'image/jpeg', 0.95);
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('vi-VN').format(value);
+  const formatNumber = (num) => {
+    return new Intl.NumberFormat('vi-VN').format(num);
   };
 
-  const exportToExcel = () => {
+  const exportCSV = () => {
     if (transactions.length === 0) {
       alert('No transactions to export');
       return;
     }
 
-    let csv = 'Date,Time,Driver,Company,Vehicle Plate,Fuel Type,Quantity (L),Unit Price (VND),Total (VND),Transaction ID\n';
-    
+    let csv = 'Date,Time,Driver,Company,Vehicle,Fuel Type,Quantity (L),Unit Price,Total,Transaction ID\n';
     transactions.forEach(t => {
       const time = new Date(t.timestamp).toLocaleTimeString('vi-VN');
-      csv += `${t.date},${time},${t.driverName},${t.driverCompany},${t.vehiclePlate},${t.fuelType},${t.quantity},${t.unitPrice},${t.total},${t.id}\n`;
+      csv += t.date + ',' + time + ',' + t.driverName + ',' + t.driverCompany + ',' + t.vehiclePlate + ',' + t.fuelType + ',' + t.quantity + ',' + t.unitPrice + ',' + t.total + ',' + t.id + '\n';
     });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ANH_HUY_Transactions_${Date.now()}.csv`;
-    document.body.appendChild(a);
+    a.download = 'ANH_HUY_Transactions_' + Date.now() + '.csv';
     a.click();
-    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
       <div className="bg-black text-white p-4">
         <h1 className="text-2xl font-bold text-center">ANH HUY GAS STATION</h1>
         <p className="text-center text-sm mt-1">Fleet Management System</p>
       </div>
 
-      {/* Tab Navigation */}
       <div className="flex bg-white border-b">
         <button
           onClick={() => setActiveTab('transaction')}
-          className={`flex-1 p-4 flex items-center justify-center gap-2 ${
-            activeTab === 'transaction' ? 'border-b-4 border-black font-bold' : ''
-          }`}
+          className={'flex-1 p-4 flex items-center justify-center gap-2 ' + (activeTab === 'transaction' ? 'border-b-4 border-black font-bold' : '')}
         >
           <Camera size={20} />
           Transaction
         </button>
         <button
           onClick={() => setActiveTab('drivers')}
-          className={`flex-1 p-4 flex items-center justify-center gap-2 ${
-            activeTab === 'drivers' ? 'border-b-4 border-black font-bold' : ''
-          }`}
+          className={'flex-1 p-4 flex items-center justify-center gap-2 ' + (activeTab === 'drivers' ? 'border-b-4 border-black font-bold' : '')}
         >
           <User size={20} />
           Drivers
         </button>
         <button
           onClick={() => setActiveTab('records')}
-          className={`flex-1 p-4 flex items-center justify-center gap-2 ${
-            activeTab === 'records' ? 'border-b-4 border-black font-bold' : ''
-          }`}
+          className={'flex-1 p-4 flex items-center justify-center gap-2 ' + (activeTab === 'records' ? 'border-b-4 border-black font-bold' : '')}
         >
           <FileText size={20} />
           Records
         </button>
       </div>
 
-      {/* Content */}
       <div className="p-4">
-        {/* Transaction Tab */}
         {activeTab === 'transaction' && (
           <div className="space-y-4">
-            {/* Driver Selection */}
             <div className="bg-white p-4 rounded-lg shadow">
               <h2 className="font-bold text-lg mb-3">Step 1: Verify Driver</h2>
               {selectedDriver ? (
@@ -475,15 +404,15 @@ const GasStationApp = () => {
               ) : (
                 <div className="space-y-2">
                   <button
-                    onClick={scanDriver}
+                    onClick={openQRScanner}
                     className="w-full bg-black text-white p-4 rounded-lg flex items-center justify-center gap-2"
                   >
                     <Camera size={24} />
                     Scan QR Code
                   </button>
                   <button
-                    onClick={() => setShowScanner(true)}
-                    className="w-full bg-gray-700 text-white p-3 rounded-lg flex items-center justify-center gap-2 text-sm"
+                    onClick={() => setShowDriverList(true)}
+                    className="w-full bg-gray-700 text-white p-3 rounded-lg flex items-center justify-center gap-2"
                   >
                     <User size={20} />
                     Select from List
@@ -492,10 +421,8 @@ const GasStationApp = () => {
               )}
             </div>
 
-            {/* Transaction Form */}
             <div className="bg-white p-4 rounded-lg shadow">
-              <h2 className="font-bold text-lg mb-3">Step 2: Fill Transaction Details</h2>
-              
+              <h2 className="font-bold text-lg mb-3">Step 2: Transaction Details</h2>
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium mb-1">Date</label>
@@ -520,6 +447,28 @@ const GasStationApp = () => {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium mb-1">Unit Price (VND/L)</label>
+                  <input
+                    type="number"
+                    value={formData.unitPrice}
+                    onChange={(e) => handleFormChange('unitPrice', e.target.value)}
+                    placeholder="23000"
+                    className="w-full p-2 border rounded"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Total Amount (VND)</label>
+                  <input
+                    type="number"
+                    value={formData.total}
+                    onChange={(e) => handleFormChange('total', e.target.value)}
+                    placeholder="500000"
+                    className="w-full p-2 border rounded"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium mb-1">Quantity (Liters)</label>
                   <input
                     type="number"
@@ -528,29 +477,7 @@ const GasStationApp = () => {
                     placeholder="Auto-calculated"
                     className="w-full p-2 border rounded bg-gray-50"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Auto-calculated from Total ÷ Unit Price</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Unit Price (VND/L)</label>
-                  <input
-                    type="number"
-                    value={formData.unitPrice}
-                    onChange={(e) => handleFormChange('unitPrice', e.target.value)}
-                    placeholder="0"
-                    className="w-full p-2 border rounded"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">Total (VND)</label>
-                  <input
-                    type="number"
-                    value={formData.total}
-                    onChange={(e) => handleFormChange('total', e.target.value)}
-                    placeholder="0"
-                    className="w-full p-2 border rounded"
-                  />
+                  <p className="text-xs text-gray-500 mt-1">Auto-calculated: Total ÷ Unit Price</p>
                 </div>
 
                 <div>
@@ -561,17 +488,10 @@ const GasStationApp = () => {
                     className="w-full p-2 border rounded"
                   >
                     <option value="">Select vehicle...</option>
-                    {vehicles.map((vehicle) => (
-                      <option key={vehicle.id} value={vehicle.plate}>
-                        {vehicle.plate}
-                      </option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.plate}>{v.plate}</option>
                     ))}
                   </select>
-                  {vehicles.length === 0 && (
-                    <p className="text-xs text-orange-600 mt-1">
-                      No vehicles in fleet. Add vehicles in the Drivers tab.
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -585,7 +505,6 @@ const GasStationApp = () => {
           </div>
         )}
 
-        {/* Drivers Tab */}
         {activeTab === 'drivers' && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -606,18 +525,16 @@ const GasStationApp = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow">
-              <h2 className="font-bold text-lg p-4 border-b">Registered Drivers ({drivers.length})</h2>
-              <div className="divide-y">
+              <h2 className="font-bold text-lg p-4 border-b">Drivers ({drivers.length})</h2>
+              <div className="divide-y max-h-96 overflow-y-auto">
                 {drivers.length === 0 ? (
-                  <p className="p-4 text-gray-500 text-center">No drivers registered yet</p>
+                  <p className="p-4 text-gray-500 text-center">No drivers yet</p>
                 ) : (
-                  drivers.map((driver) => (
-                    <div key={driver.id} className="p-4">
-                      <p className="font-medium">{driver.name}</p>
-                      <p className="text-sm text-gray-700 mt-1">{driver.company}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        ID: {driver.id} | Added: {new Date(driver.addedDate).toLocaleDateString('vi-VN')}
-                      </p>
+                  drivers.map((d) => (
+                    <div key={d.id} className="p-4">
+                      <p className="font-medium">{d.name}</p>
+                      <p className="text-sm text-gray-600">{d.company}</p>
+                      <p className="text-xs text-gray-400 mt-1">{d.id}</p>
                     </div>
                   ))
                 )}
@@ -625,17 +542,14 @@ const GasStationApp = () => {
             </div>
 
             <div className="bg-white rounded-lg shadow">
-              <h2 className="font-bold text-lg p-4 border-b">Fleet Vehicles ({vehicles.length})</h2>
+              <h2 className="font-bold text-lg p-4 border-b">Vehicles ({vehicles.length})</h2>
               <div className="divide-y">
                 {vehicles.length === 0 ? (
-                  <p className="p-4 text-gray-500 text-center">No vehicles in fleet yet</p>
+                  <p className="p-4 text-gray-500 text-center">No vehicles yet</p>
                 ) : (
-                  vehicles.map((vehicle) => (
-                    <div key={vehicle.id} className="p-4">
-                      <p className="font-medium text-lg">{vehicle.plate}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Added: {new Date(vehicle.addedDate).toLocaleDateString('vi-VN')}
-                      </p>
+                  vehicles.map((v) => (
+                    <div key={v.id} className="p-4">
+                      <p className="font-medium text-lg">{v.plate}</p>
                     </div>
                   ))
                 )}
@@ -644,35 +558,34 @@ const GasStationApp = () => {
           </div>
         )}
 
-        {/* Records Tab */}
         {activeTab === 'records' && (
           <div className="space-y-4">
             <button
-              onClick={exportToExcel}
+              onClick={exportCSV}
               className="w-full bg-green-600 text-white p-4 rounded-lg flex items-center justify-center gap-2"
             >
               <Download size={20} />
-              Export to Excel/CSV
+              Export to CSV
             </button>
 
             <div className="bg-white rounded-lg shadow">
-              <h2 className="font-bold text-lg p-4 border-b">Transaction History ({transactions.length})</h2>
+              <h2 className="font-bold text-lg p-4 border-b">History ({transactions.length})</h2>
               <div className="divide-y max-h-96 overflow-y-auto">
                 {transactions.length === 0 ? (
                   <p className="p-4 text-gray-500 text-center">No transactions yet</p>
                 ) : (
-                  [...transactions].reverse().map((txn) => (
-                    <div key={txn.id} className="p-4">
+                  [...transactions].reverse().map((t) => (
+                    <div key={t.id} className="p-4">
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <p className="font-bold">{txn.vehiclePlate}</p>
-                          <p className="text-sm text-gray-600">{txn.driverName} • {txn.driverCompany}</p>
+                          <p className="font-bold">{t.vehiclePlate}</p>
+                          <p className="text-sm text-gray-600">{t.driverName} • {t.driverCompany}</p>
                         </div>
-                        <p className="font-bold text-lg">{formatCurrency(txn.total)} ₫</p>
+                        <p className="font-bold text-lg">{formatNumber(t.total)} ₫</p>
                       </div>
-                      <div className="text-xs text-gray-500 space-y-1">
-                        <p>{txn.date} • {new Date(txn.timestamp).toLocaleTimeString('vi-VN')}</p>
-                        <p>{txn.fuelType} • {txn.quantity}L @ {formatCurrency(txn.unitPrice)} ₫/L</p>
+                      <div className="text-xs text-gray-500">
+                        <p>{t.date} • {new Date(t.timestamp).toLocaleTimeString('vi-VN')}</p>
+                        <p>{t.fuelType} • {t.quantity}L @ {formatNumber(t.unitPrice)} ₫/L</p>
                       </div>
                     </div>
                   ))
@@ -683,53 +596,61 @@ const GasStationApp = () => {
         )}
       </div>
 
-      {/* Scanner Modal */}
-      {showScanner && (
+      {qrCodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-96 overflow-y-auto">
-            <h2 className="font-bold text-xl mb-4">Select Driver</h2>
-            <div className="space-y-2">
-              {drivers.map((driver) => (
-                <button
-                  key={driver.id}
-                  onClick={() => selectDriverFromList(driver)}
-                  className="w-full p-3 border-2 rounded-lg text-left hover:border-black hover:bg-gray-50"
-                >
-                  <p className="font-medium">{driver.name}</p>
-                  <p className="text-sm text-gray-600">{driver.company}</p>
-                  <p className="text-xs text-gray-500 mt-1">ID: {driver.id}</p>
-                </button>
-              ))}
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="font-bold text-xl">Driver QR Code</h2>
+              <button onClick={() => setQrCodeModal(null)}>
+                <X size={24} />
+              </button>
+            </div>
+            <div className="text-center mb-4">
+              <p className="font-medium text-lg">{qrCodeModal.name}</p>
+              <p className="text-sm text-gray-600">{qrCodeModal.company}</p>
+            </div>
+            <div className="bg-white p-4 border-2 rounded-lg mb-4">
+              <img src={qrCodeModal.qrCode} alt="QR Code" className="w-full" />
             </div>
             <button
-              onClick={() => setShowScanner(false)}
-              className="w-full mt-4 p-3 bg-gray-200 rounded-lg"
+              onClick={() => {
+                const a = document.createElement('a');
+                a.href = qrCodeModal.qrCode;
+                a.download = 'QR_' + qrCodeModal.name.replace(/\s/g, '_') + '.png';
+                a.click();
+                alert('QR Code downloaded!');
+              }}
+              className="w-full bg-blue-600 text-white p-3 rounded-lg mb-2"
             >
-              Cancel
+              Download QR Code
             </button>
+            <p className="text-xs text-gray-500 text-center">
+              Print this QR code and give it to the driver
+            </p>
           </div>
         </div>
       )}
 
-      {/* QR Scanner Modal */}
       {showQRScanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full">
-            <h2 className="font-bold text-xl mb-4 text-center">Scan Driver QR Code</h2>
+            <h2 className="font-bold text-xl mb-4 text-center">Scan QR Code</h2>
             
-            {/* QR Scanner Container */}
-            <div id="qr-reader" className="mb-4 rounded-lg overflow-hidden"></div>
+            <div className="bg-black rounded-lg overflow-hidden mb-4">
+              <video ref={videoRef} className="w-full h-full object-cover" style={{ height: '300px' }} />
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+            </div>
             
             <p className="text-sm text-gray-600 text-center mb-4">
-              Position the QR code within the frame
+              {scanning ? 'Position QR code in camera view' : 'Starting camera...'}
             </p>
             
             <div className="space-y-2">
               <button
-                onClick={handleQRScan}
-                className="w-full bg-gray-700 text-white p-3 rounded-lg text-sm"
+                onClick={manualDriverEntry}
+                className="w-full bg-gray-700 text-white p-3 rounded-lg"
               >
-                Manual Entry (Type ID)
+                Manual Entry (Type Driver ID)
               </button>
               <button
                 onClick={closeQRScanner}
@@ -742,45 +663,33 @@ const GasStationApp = () => {
         </div>
       )}
 
-      {/* QR Code Display Modal */}
-      {driverQRCode && (
+      {showDriverList && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h2 className="font-bold text-xl mb-4">Driver QR Code Generated!</h2>
-            <div className="text-center mb-4">
-              <p className="font-medium text-lg">{driverQRCode.name}</p>
-              <p className="text-sm text-gray-600">{driverQRCode.company}</p>
-            </div>
-            <div className="bg-white p-4 border-2 border-gray-300 rounded-lg mb-4">
-              <img src={driverQRCode.qrCode} alt="Driver QR Code" className="w-full" />
-            </div>
-            <p className="text-xs text-gray-600 mb-4 text-center">
-              Save this QR code and give it to the driver. They must show this to fuel up.
-            </p>
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-96 overflow-y-auto">
+            <h2 className="font-bold text-xl mb-4">Select Driver</h2>
             <div className="space-y-2">
-              <button
-                onClick={() => {
-                  const a = document.createElement('a');
-                  a.href = driverQRCode.qrCode;
-                  a.download = `QR_${driverQRCode.name.replace(/\s/g, '_')}.png`;
-                  a.click();
-                }}
-                className="w-full bg-blue-600 text-white p-3 rounded-lg"
-              >
-                Download QR Code
-              </button>
-              <button
-                onClick={() => setDriverQRCode(null)}
-                className="w-full p-3 bg-gray-200 rounded-lg"
-              >
-                Close
-              </button>
+              {drivers.map((d) => (
+                <button
+                  key={d.id}
+                  onClick={() => selectDriverFromList(d)}
+                  className="w-full p-3 border-2 rounded-lg text-left hover:border-black"
+                >
+                  <p className="font-medium">{d.name}</p>
+                  <p className="text-sm text-gray-600">{d.company}</p>
+                </button>
+              ))}
             </div>
+            <button
+              onClick={() => setShowDriverList(false)}
+              className="w-full mt-4 p-3 bg-gray-200 rounded-lg"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
     </div>
   );
-};
+}
 
 export default GasStationApp;
