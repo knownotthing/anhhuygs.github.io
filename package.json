@@ -1,26 +1,23 @@
 {
   "name": "anh-huy-gas-station",
-  "homepage": "https://knownotthing.github.io/anhhuygs.github.io/",
+  "version": "1.0.0",
+  "type": "module",
+  "homepage": "https://knownotthing.github.io/anh-huy-gas-station/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
-  }
-}
+  },
   "dependencies": {
-    "html5-qrcode": "^2.3.8",
-    "lucide-react": "^0.263.1",
-    "qrcode": "^1.5.4",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.263.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.0.0",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.16",
-    "vite": "^7.1.12"
+    "vite": "^4.3.9",
+    "gh-pages": "^6.0.0"
   }
 }
